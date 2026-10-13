@@ -6,6 +6,11 @@ import {
   type BangumiSubjectType,
   type BangumiCollectionType,
   type NeodbProgressType,
+  type NeodbCategory,
+  type NeodbItem,
+  type ShelfType,
+  type TmdbAccountStates,
+  type TmdbMediaType,
 } from './types';
 
 export const ALL_STATUS =
@@ -188,5 +193,130 @@ export function neodbItemSupportsProgress(
     default:
       // Unknown combo: do not POST (avoid noisy 400s).
       return !(cat === 'movie' || type === 'movie');
+  }
+}
+
+// ───────────────────────────────────────────────────────────────────────────
+// NeoDB → TMDB path
+//
+// The shelf → TMDB mapping itself lives in `mapping.ts`. This section only
+// holds facts about the two APIs and the pure helpers built on them.
+// ───────────────────────────────────────────────────────────────────────────
+
+/**
+ * NeoDB category → TMDB media type.
+ * Anything absent here has no TMDB counterpart and is dropped before any
+ * network call (book / music / game / podcast / performance).
+ */
+export const NEODB_TO_TMDB_MEDIA_TYPE: Partial<Record<NeodbCategory, TmdbMediaType>> = {
+  movie: 'movie',
+  tv: 'tv',
+};
+
+export const NEODB_CATEGORIES_WITHOUT_TMDB: ReadonlySet<string> =
+  new Set<NeodbCategory>(['book', 'music', 'game', 'podcast', 'performance']);
+
+/**
+ * NeoDB rating_grade (0–10, integer) → TMDB rating (0.5–10, step 0.5).
+ *
+ * Both are 10-point scales, so this is step alignment rather than rescaling.
+ * NeoDB uses 0 to mean "unrated", which becomes `null` so callers neither write
+ * nor delete — deleting would wipe a rating the user set by hand on TMDB.
+ *
+ * This function is also what makes the mapping's "rating_grade > 0" test exact:
+ * a 0 / null / undefined grade yields null, anything else yields a usable rating.
+ */
+export function neodbGradeToTmdbRating(
+  grade: number | null | undefined,
+): number | null {
+  if (grade == null || !Number.isFinite(grade) || grade <= 0) {
+    return null;
+  }
+  const snapped = Math.round(grade * 2) / 2;
+  return Math.min(Math.max(snapped, 0.5), 10);
+}
+
+/** Read an existing TMDB rating defensively (`rated` may be `false`). */
+export function extractTmdbRating(states: TmdbAccountStates | null): number | null {
+  if (!states) {
+    return null;
+  }
+  const rated = states.rated;
+  if (rated && typeof rated === 'object' && typeof rated.value === 'number') {
+    return rated.value;
+  }
+  return null;
+}
+
+/**
+ * Release year, best effort.
+ * Verified: `year` exists on movie/tv items, `pub_year` on books. Books are
+ * never synced, but probing both keeps this robust if that changes.
+ */
+export function extractNeodbYear(item: NeodbItem): number | undefined {
+  for (const candidate of [item.year, item.pub_year]) {
+    if (typeof candidate === 'number' && Number.isFinite(candidate) && candidate > 0) {
+      return candidate;
+    }
+  }
+  return undefined;
+}
+
+/** Extract a TMDB target from NeoDB external_resources, if the link is present. */
+export function extractTmdbTargetFromNeodb(
+  item: NeodbItem,
+): { mediaType: TmdbMediaType; id: number } | null {
+  for (const resource of item.external_resources ?? []) {
+    const match = resource.url?.match(/themoviedb\.org\/(movie|tv)\/(\d+)/i);
+    if (match?.[1] && match[2]) {
+      const mediaType = match[1].toLowerCase() === 'tv' ? 'tv' : 'movie';
+      return { mediaType, id: Number(match[2]) };
+    }
+  }
+  return null;
+}
+
+/** Extract an IMDb id from NeoDB external_resources, if the link is present. */
+export function extractImdbIdFromNeodb(item: NeodbItem): string | null {
+  for (const resource of item.external_resources ?? []) {
+    const match = resource.url?.match(/imdb\.com\/title\/(tt\d+)/i);
+    if (match?.[1]) {
+      return match[1];
+    }
+  }
+  return null;
+}
+
+/** Candidate titles for search: display_title, title, then localized titles. */
+export function collectTitles(item: NeodbItem): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  const push = (value: string | undefined): void => {
+    const trimmed = value?.trim();
+    if (!trimmed || seen.has(trimmed)) {
+      return;
+    }
+    seen.add(trimmed);
+    out.push(trimmed);
+  };
+
+  push(item.display_title);
+  push(item.title);
+  for (const localized of item.localized_title ?? []) {
+    push(localized.text);
+  }
+  return out;
+}
+
+/** Normalise a shelf_type value coming from the API. */
+export function toShelfType(value: string): ShelfType | null {
+  switch (value) {
+    case 'wishlist':
+    case 'progress':
+    case 'complete':
+    case 'dropped':
+      return value;
+    default:
+      return null;
   }
 }

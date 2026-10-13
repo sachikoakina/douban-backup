@@ -3,40 +3,29 @@ import got, { HTTPError } from 'got';
 import { consola } from 'consola';
 import { DOUBAN_EXPRESSED_STATUSES } from './const';
 import {
-  ItemCategory,
   ItemStatus,
   type BangumiSubjectType,
   type FeedItem,
+  type NeodbItem,
+  type NeodbMe,
+  type NeodbPagedMark,
   type NeodbProgressType,
+  type ShelfType,
 } from './types';
 import { sleep } from './utils';
 import { mergeNeodbMark } from './neodb-merge';
-import { syncConfig } from './sync-config';
+import { neodbTmdbConfig, syncConfig } from './sync-config';
 
 dotenv.config();
 
 export const neodbToken = process.env.NEODB_API_TOKEN;
 export const neodbVisibility = Number(process.env.NEODB_VISIBILITY ?? 2);
 
-export type NeodbItem = {
-  id: string;
-  type: string;
-  uuid: string;
-  url: string;
-  api_url: string;
-  category: ItemCategory | string;
-  parent_uuid: string;
-  display_title: string;
-  external_resources: {
-    url: string;
-  }[];
-  title: string;
-  brief: string;
-  cover_image_url: string;
-  rating: number;
-  rating_count: number;
-  localized_title?: { lang?: string; text?: string }[];
-};
+/**
+ * Re-exported from types.ts so the catalog shape lives in exactly one place
+ * and no module has to import back into this one.
+ */
+export type { NeodbItem } from './types';
 
 /** NeoDB /api/catalog/search category filter */
 export type NeodbSearchCategory =
@@ -328,10 +317,7 @@ export async function syncFeedItemToNeodb(item: FeedItem): Promise<void> {
   if (merged.keptRating || merged.keptComment) {
     consola.info(
       'NeoDB prefer: keeping existing ',
-      [
-        merged.keptRating ? 'rating' : null,
-        merged.keptComment ? 'comment' : null,
-      ]
+      [merged.keptRating ? 'rating' : null, merged.keptComment ? 'comment' : null]
         .filter(Boolean)
         .join('+'),
       ' on ',
@@ -340,11 +326,11 @@ export async function syncFeedItemToNeodb(item: FeedItem): Promise<void> {
   }
 
   consola.info('Item mark changed, going to update: ', label);
-  // Do not pass createdTime on update — preserves NeoDB mark date.
   await markNeodbItem(neodbItem, {
     shelfType: merged.shelfType,
     comment: merged.comment,
     ratingGrade: merged.ratingGrade,
+    createdTime: item.time,
   });
 }
 
@@ -395,33 +381,6 @@ export function bangumiSubjectTypeToNeodbSearchCategory(
       return 'game';
     default:
       return undefined;
-  }
-}
-
-/**
- * Whether a NeoDB catalog category matches a Bangumi subject type.
- * Prevents manga/book marks from landing on same-title TV/movie twins.
- */
-export function isNeodbCategoryCompatibleWithBangumi(
-  neodbCategory: string | undefined,
-  subjectType: BangumiSubjectType | undefined,
-): boolean {
-  if (subjectType == null) {
-    return true;
-  }
-  const cat = String(neodbCategory || '').toLowerCase();
-  switch (subjectType) {
-    case 1:
-      return cat === 'book';
-    case 2:
-    case 6:
-      return cat === 'movie' || cat === 'tv';
-    case 3:
-      return cat === 'music';
-    case 4:
-      return cat === 'game';
-    default:
-      return true;
   }
 }
 
@@ -486,14 +445,11 @@ export async function searchNeodbCatalog(
 /**
  * Find a Douban-linked catalog twin by exact title match when external_resources
  * on the Bangumi-fetched item do not already include a Douban URL.
- * Searches only within `category` when set (no all-category fallback) and
- * rejects hits whose NeoDB category is incompatible with Bangumi subjectType.
  */
 export async function findDoubanLinkedTwinByTitle(
   fromBangumi: NeodbItem,
   titles: Array<string | null | undefined>,
   category?: NeodbSearchCategory,
-  subjectType?: BangumiSubjectType,
 ): Promise<NeodbItem | null> {
   const queries = uniqueNonEmptyTitles([
     ...titles,
@@ -505,33 +461,35 @@ export async function findDoubanLinkedTwinByTitle(
   }
 
   const queryKeys = new Set(queries.map(normalizeTitleKey));
+  const categories: Array<NeodbSearchCategory | undefined> = category
+    ? [category, undefined]
+    : [undefined];
   const seenUuid = new Set<string>([fromBangumi.uuid]);
 
-  for (const query of queries) {
-    const hits = await searchNeodbCatalog(query, category);
-    for (const hit of hits) {
-      if (!hit.uuid || seenUuid.has(hit.uuid)) continue;
-      seenUuid.add(hit.uuid);
-      if (!extractDoubanUrlFromNeodb(hit)) continue;
-      if (!isNeodbCategoryCompatibleWithBangumi(hit.category, subjectType)) {
-        continue;
-      }
+  for (const cat of categories) {
+    for (const query of queries) {
+      const hits = await searchNeodbCatalog(query, cat);
+      for (const hit of hits) {
+        if (!hit.uuid || seenUuid.has(hit.uuid)) continue;
+        seenUuid.add(hit.uuid);
+        if (!extractDoubanUrlFromNeodb(hit)) continue;
 
-      const hitKeys = collectNeodbItemTitleKeys(hit);
-      let matched = false;
-      for (const key of queryKeys) {
-        if (hitKeys.has(key)) {
-          matched = true;
-          break;
+        const hitKeys = collectNeodbItemTitleKeys(hit);
+        let matched = false;
+        for (const key of queryKeys) {
+          if (hitKeys.has(key)) {
+            matched = true;
+            break;
+          }
         }
-      }
-      if (!matched) continue;
+        if (!matched) continue;
 
-      consola.info(
-        'NeoDB Douban twin found via title search: ',
-        `${fromBangumi.uuid} → ${hit.uuid} (${hit.title || hit.display_title})`,
-      );
-      return hit;
+        consola.info(
+          'NeoDB Douban twin found via title search: ',
+          `${fromBangumi.uuid} → ${hit.uuid} (${hit.title || hit.display_title})`,
+        );
+        return hit;
+      }
     }
   }
 
@@ -550,9 +508,7 @@ export type ResolveBangumiNeodbOptions = {
  * This keeps Bangumi→NeoDB marks on the same uuid as Douban→NeoDB.
  *
  * 1) Prefer Douban URL already on the Bangumi-fetched item's external_resources
- *    (same medium only; e.g. book twin for Bangumi books)
  * 2) Else search catalog by title for an exact-title hit that has a Douban link
- *    within the Bangumi subject type's NeoDB category
  */
 export async function resolveNeodbItemForBangumiUrl(
   bangumiUrl: string,
@@ -567,18 +523,6 @@ export async function resolveNeodbItemForBangumiUrl(
   if (doubanUrl) {
     const fromDouban = await fetchNeodbItemByUrl(doubanUrl);
     if (fromDouban?.uuid && fromDouban.uuid !== fromBangumi.uuid) {
-      if (
-        !isNeodbCategoryCompatibleWithBangumi(
-          fromDouban.category,
-          options.subjectType,
-        )
-      ) {
-        consola.info(
-          'NeoDB Douban twin category mismatch, keep Bangumi entry: ',
-          `${fromBangumi.uuid} (${fromBangumi.category}) ↛ ${fromDouban.uuid} (${fromDouban.category})`,
-        );
-        return fromBangumi;
-      }
       consola.info(
         'NeoDB has separate Douban/Bangumi catalog entries; prefer Douban twin: ',
         `${fromBangumi.uuid} → ${fromDouban.uuid}`,
@@ -597,7 +541,6 @@ export async function resolveNeodbItemForBangumiUrl(
     fromBangumi,
     options.titles || [],
     category,
-    options.subjectType,
   );
   return twin || fromBangumi;
 }
@@ -622,4 +565,183 @@ function neodbCategoryToSearchCategory(
     default:
       return undefined;
   }
+}
+
+// ───────────────────────────────────────────────────────────────────────────
+// NeoDB → TMDB path: shelf listing
+//
+// Verified endpoints (see README "接口依据" for sources):
+//   GET /api/token                            → credential probe
+//   GET /api/me                               → current account
+//   GET /api/me/shelf/{type}?category=&page=  → PagedMarkSchema
+//
+// `type` is a PATH parameter, not a query parameter. That is the single most
+// likely integration bug here, hence the explicit URL construction below.
+//
+// Uses its own client because the base URL is configurable (self-hosted
+// instances), independent of the legacy calls above.
+// ───────────────────────────────────────────────────────────────────────────
+
+const neodbShelfClient = got.extend({
+  prefixUrl: neodbTmdbConfig.neodb.baseUrl,
+  headers: { accept: 'application/json' },
+  timeout: { request: 30000 },
+  retry: {
+    limit: 3,
+    methods: ['GET'],
+    statusCodes: [408, 429, 500, 502, 503, 504],
+    errorCodes: ['ETIMEDOUT', 'ECONNRESET', 'EPIPE', 'ENOTFOUND', 'EAI_AGAIN'],
+    calculateDelay: ({ attemptCount, error, computedValue }) => {
+      const retryAfter = Number(error?.response?.headers?.['retry-after']);
+      if (Number.isFinite(retryAfter) && retryAfter > 0) {
+        return retryAfter * 1000;
+      }
+      return Math.min(2 ** attemptCount * 500, 8000) || computedValue;
+    },
+  },
+});
+
+function shelfAuthHeaders(): Record<string, string> {
+  return { Authorization: `Bearer ${neodbToken ?? ''}` };
+}
+
+function shelfFailureCode(error: unknown): string {
+  if (error instanceof HTTPError) {
+    return `${error.response.statusCode} ${error.message}`;
+  }
+  return error instanceof Error ? error.message : String(error);
+}
+
+function logShelfUnauthorized(): void {
+  consola.error(
+    'NeoDB 返回 401：token 无效或已过期。请到你的实例 /developer/ 页面重新授权并更新 NEODB_API_TOKEN。',
+  );
+}
+
+export async function neodbThrottle(): Promise<void> {
+  await sleep(neodbTmdbConfig.neodb.requestDelayMs);
+}
+
+/** GET /api/token — cheap way to validate credentials before a full run. */
+export async function verifyNeodbToken(): Promise<boolean> {
+  if (!neodbToken) {
+    return false;
+  }
+  try {
+    await neodbShelfClient('api/token', { headers: shelfAuthHeaders() });
+    return true;
+  } catch (error) {
+    if (error instanceof HTTPError && error.response.statusCode === 401) {
+      logShelfUnauthorized();
+    } else {
+      consola.error('NeoDB token check failed: ', shelfFailureCode(error));
+    }
+    return false;
+  }
+}
+
+/** GET /api/me */
+export async function getNeodbMe(): Promise<NeodbMe | null> {
+  if (!neodbToken) {
+    return null;
+  }
+  try {
+    return (await neodbShelfClient('api/me', {
+      headers: shelfAuthHeaders(),
+    }).json()) as NeodbMe;
+  } catch (error) {
+    if (error instanceof HTTPError && error.response.statusCode === 401) {
+      logShelfUnauthorized();
+    } else {
+      consola.error('Failed to fetch NeoDB account: ', shelfFailureCode(error));
+    }
+    return null;
+  }
+}
+
+/**
+ * One page of GET /api/me/shelf/{type}.
+ * Returns null on failure so callers can tell "error" from "empty page".
+ */
+export async function fetchShelfPage(options: {
+  shelfType: ShelfType;
+  category?: string;
+  page: number;
+}): Promise<NeodbPagedMark | null> {
+  if (!neodbToken) {
+    return null;
+  }
+
+  const searchParams: Record<string, string | number> = { page: options.page };
+  if (options.category) {
+    searchParams.category = options.category;
+  }
+
+  try {
+    const result = (await neodbShelfClient(`api/me/shelf/${options.shelfType}`, {
+      headers: shelfAuthHeaders(),
+      searchParams,
+    }).json()) as NeodbPagedMark;
+
+    // Defensive: the shape is verified, but a proxy or a fork could differ.
+    if (!Array.isArray(result?.data)) {
+      consola.warn(
+        `Unexpected shelf response for ${options.shelfType} page ${options.page}; treating as empty.`,
+      );
+      return { data: [], pages: 1, count: 0 };
+    }
+    return result;
+  } catch (error) {
+    if (error instanceof HTTPError && error.response.statusCode === 401) {
+      logShelfUnauthorized();
+    } else if (error instanceof HTTPError && error.response.statusCode === 404) {
+      consola.warn(
+        `Shelf "${options.shelfType}" returned 404 — it may not exist on this instance.`,
+      );
+    } else {
+      consola.error(
+        `Failed to fetch shelf ${options.shelfType} page ${options.page}: `,
+        shelfFailureCode(error),
+      );
+    }
+    return null;
+  }
+}
+
+/**
+ * Walk the pages of one shelf, up to `neodbTmdbConfig.maxPages`.
+ * Stops early on an empty page or when the reported page count is reached.
+ */
+export async function fetchShelf(
+  shelfType: ShelfType,
+  category?: string,
+): Promise<NeodbPagedMark['data']> {
+  const collected: NeodbPagedMark['data'] = [];
+
+  for (let page = 1; page <= neodbTmdbConfig.neodb.maxPages; page += 1) {
+    const result = await fetchShelfPage({ shelfType, category, page });
+    if (result === null) {
+      consola.warn(`Aborting shelf "${shelfType}" at page ${page} after an error.`);
+      break;
+    }
+    if (result.data.length === 0) {
+      break;
+    }
+
+    collected.push(...result.data);
+
+    const reportedPages = Number(result.pages);
+    if (Number.isFinite(reportedPages) && page >= reportedPages) {
+      break;
+    }
+    if (page === neodbTmdbConfig.neodb.maxPages) {
+      consola.warn(
+        `Shelf "${shelfType}" hit NEODB_MAX_PAGES (${neodbTmdbConfig.neodb.maxPages}); more items remain.`,
+      );
+      break;
+    }
+    await neodbThrottle();
+  }
+
+  return collected;
 }

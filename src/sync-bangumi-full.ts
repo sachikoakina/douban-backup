@@ -1,6 +1,8 @@
 import { consola } from 'consola';
 import handleBangumiToNeodb from './handle-bangumi-neodb';
 import { syncConfig } from './sync-config';
+import { printOverallSummary } from './sync-report';
+import { pathHasFailed } from './types';
 
 /**
  * Full sync of all Bangumi collections to NeoDB.
@@ -12,7 +14,16 @@ async function main(): Promise<void> {
     return;
   }
   consola.start('Starting Bangumi → NeoDB full sync...');
-  await handleBangumiToNeodb(true);
+
+  const report = await handleBangumiToNeodb(true);
+  printOverallSummary([report]);
+
+  if (pathHasFailed(report)) {
+    process.exitCode = 1;
+  }
 }
 
-main();
+main().catch((error: unknown) => {
+  consola.error('Unexpected failure: ', error);
+  process.exitCode = 1;
+});
