@@ -1,8 +1,4 @@
-import Parser from 'rss-parser';
-import dotenv from 'dotenv';
-import got from 'got';
 import { JSDOM } from 'jsdom';
-import { consola } from 'consola';
 import {
   ALL_STATUS,
   STATUS_TITLE_PREFIX,
@@ -11,86 +7,26 @@ import {
   ReadState,
   PlayState,
   ListenState,
-} from './const';
-import { ItemCategory, ItemStatus, type RSSFeedItem, type FeedItem } from './types';
+} from './platform-mappings';
+import {
+  ItemCategory,
+  type ItemStatus,
+  type RSSFeedItem,
+  type FeedItem,
+} from '../types/platform-model';
+
+/**
+ * 豆瓣 RSS 条目的归一化（纯函数，无网络）。
+ *
+ * 输入是 rss-parser 解析出的原始 item，输出是各链路统一消费的 FeedItem。
+ * 抓取见 clients/douban-rss-fetcher.ts。
+ */
 
 type ItemInfo = {
   category: ItemCategory;
   id: string;
   status: ItemStatus;
 };
-
-dotenv.config();
-
-const DOUBAN_RSS_UA =
-  process.env.DOUBAN_RSS_USER_AGENT ||
-  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
-
-export async function fetchRSSFeeds(): Promise<RSSFeedItem[]> {
-  const DOUBAN_USER_ID = process.env.DOUBAN_USER_ID;
-  if (!DOUBAN_USER_ID) {
-    throw new Error('DOUBAN_USER_ID is not set');
-  }
-
-  const url = `https://www.douban.com/feed/people/${DOUBAN_USER_ID}/interests`;
-  const parser = new Parser();
-
-  try {
-    // Douban often 403s bare requests from CI; use a browser-like UA via got.
-    // Timeouts / transient 5xx are common on Actions — retry a few times.
-    const xml = await got(url, {
-      headers: {
-        'User-Agent': DOUBAN_RSS_UA,
-        Accept:
-          'application/atom+xml, application/rss+xml, application/xml, text/xml, */*',
-        'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8',
-        Referer: 'https://www.douban.com/',
-      },
-      timeout: { request: 60000 },
-      retry: {
-        limit: 3,
-        methods: ['GET'],
-        statusCodes: [401, 403, 408, 413, 429, 500, 502, 503, 504],
-        errorCodes: [
-          'ETIMEDOUT',
-          'ECONNRESET',
-          'EADDRINUSE',
-          'ECONNREFUSED',
-          'EPIPE',
-          'ENOTFOUND',
-          'ENETUNREACH',
-          'EAI_AGAIN',
-        ],
-        calculateDelay: ({ attemptCount, error, computedValue }) => {
-          // Cap 401/403 retries — often permanent WAF blocks.
-          const status = error?.response?.statusCode;
-          if ((status === 401 || status === 403) && attemptCount <= 2) {
-            return attemptCount * 2500;
-          }
-          if (status === 401 || status === 403) {
-            return 0;
-          }
-          return computedValue;
-        },
-      },
-    }).text();
-
-    const feeds = await parser.parseString(xml);
-    return feeds.items;
-  } catch (error: any) {
-    const status = error?.response?.statusCode;
-    if (status === 401 || status === 403) {
-      consola.error(
-        `Douban RSS returned ${status} (blocked or need browser session). ` +
-          'CI/机房 IP 常被拦；可设 DOUBAN_RSS_USER_AGENT，或暂时只开 SYNC_BANGUMI_NEODB。',
-      );
-    } else {
-      consola.error('Failed to parse RSS url: ', error);
-    }
-    throw error;
-  }
-}
-
 /**
  * Normalize the given array of RSS feed items.
  *

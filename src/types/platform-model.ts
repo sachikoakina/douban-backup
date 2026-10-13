@@ -1,5 +1,24 @@
 import Parser from 'rss-parser';
-import DB_PROPERTIES from '../cols.json';
+import DB_PROPERTIES from '../../cols.json';
+
+/**
+ * 跨平台数据模型（纯类型 + 少量常量，无网络、无副作用）。
+ *
+ * 按平台分段：
+ *   · 豆瓣     ItemCategory / ItemStatus / FeedItem —— 豆瓣 RSS 归一化后的条目
+ *   · Bangumi  BangumiSubjectType / BangumiCollectionType —— 官方数字枚举的约束
+ *   · NeoDB    NeodbItem / NeodbShelfEntry / NeodbPagedMark —— 目录条目与书架条目
+ *   · TMDB     TmdbTarget / TmdbAccountStates / TmdbSearchResult —— 写入目标与现状
+ *
+ * 注意 NeoDB 与豆瓣共用同一套四种货架状态：
+ *   ItemStatus 枚举（可写 `ItemStatus.Complete`）与 ShelfType 字符串联合
+ *   （API 直接返回裸字符串，便于断言）表达的是同一组取值，二者刻意并存。
+ *
+ * 其余契约类型所在文件：
+ *   · Notion 写入载荷 → types/notion.ts
+ *   · 链路执行结果   → report/path-report.ts
+ *   · TMDB 链路计数  → domain/tmdb-sync-counters.ts
+ */
 
 export type DB_PROPERTIES_KEYS = Exclude<keyof typeof DB_PROPERTIES, 'NAME'>;
 
@@ -50,93 +69,6 @@ export type NeodbProgressType =
   | 'cycle'
   | 'timestamp'
   | 'percentage';
-
-export enum NotionPropTypesEnum {
-  TITLE = 'title',
-  RICH_TEXT = 'rich_text',
-  FILES = 'files',
-  DATE = 'date',
-  MULTI_SELECT = 'multi_select',
-  NUMBER = 'number',
-  URL = 'url',
-}
-
-export type NotionRichTextPropType = {
-  id?: string;
-  type: NotionPropTypesEnum.RICH_TEXT;
-  rich_text: {
-    type: 'text';
-    text: {
-      content: string;
-    };
-  }[];
-};
-
-export type NotionTitlePropType = {
-  id?: 'title';
-  type: NotionPropTypesEnum.TITLE;
-  title: {
-    text: {
-      content: string;
-    };
-  }[];
-};
-
-export type NotionFilesPropType = {
-  id?: string;
-  type: NotionPropTypesEnum.FILES;
-  files: {
-    name: string;
-    type: 'external';
-    external: {
-      url: string;
-    };
-  }[];
-};
-
-export type NotionDatePropType = {
-  id?: string;
-  type: NotionPropTypesEnum.DATE;
-  date: {
-    start: string;
-    end: string | null;
-    time_zone: string | null;
-  };
-};
-
-export type NotionMultiSelectPropType = {
-  id?: string;
-  type: NotionPropTypesEnum.MULTI_SELECT;
-  multi_select: {
-    name: string;
-  }[];
-};
-
-export type NotionNumberPropType = {
-  id?: string;
-  type: NotionPropTypesEnum.NUMBER;
-  number: number | null;
-};
-
-export type NotionUrlPropType = {
-  id?: string;
-  type: NotionPropTypesEnum.URL;
-  url: string;
-};
-
-export type NotionColPropTypes =
-  | NotionRichTextPropType
-  | NotionTitlePropType
-  | NotionFilesPropType
-  | NotionDatePropType
-  | NotionMultiSelectPropType
-  | NotionNumberPropType
-  | NotionUrlPropType;
-
-export type FailedItem = {
-  link: string;
-  title: string;
-};
 
 // ───────────────────────────────────────────────────────────────────────────
 // NeoDB → TMDB path
@@ -206,10 +138,10 @@ export type NeodbItem = {
 /**
  * MarkSchema — one element of `data[]` in PagedMarkSchema.
  *
- * Named `NeodbShelfMark` to avoid colliding with `NeodbMark` in neodb.ts,
+ * Named `NeodbShelfEntry` to avoid colliding with `NeodbMark` in neodb.ts,
  * which is a different (item-less) shape used by the legacy mark logic.
  */
-export type NeodbShelfMark = {
+export type NeodbShelfEntry = {
   shelf_type: ShelfType | string;
   /** 0 = public, 1 = followers, 2 = private. Not mapped to TMDB (no equivalent). */
   visibility?: number;
@@ -226,7 +158,7 @@ export type NeodbShelfMark = {
 
 /** PagedMarkSchema — response of GET /api/me/shelf/{type}. */
 export type NeodbPagedMark = {
-  data: NeodbShelfMark[];
+  data: NeodbShelfEntry[];
   pages: number;
   count: number;
 };
@@ -271,98 +203,4 @@ export type TmdbSearchResult = {
 };
 
 /** How a NeoDB↔TMDB rating conflict resolves. */
-export type RatingProfile = 'tmdb_prefer' | 'overwrite';
-
-export type SyncCounters = {
-  scanned: number;
-  skippedCategory: number;
-  skippedShelf: number;
-  skippedCached: number;
-  /**
-   * Same TMDB item reached again in one run (an item can sit on several
-   * shelves). Counted so that the per-path self-check still adds up: without
-   * it, a duplicate would bump `scanned` and nothing else.
-   */
-  skippedDuplicate: number;
-  matchedTmdbLink: number;
-  matchedImdb: number;
-  matchedSearch: number;
-  unmatched: number;
-  writtenWatchlist: number;
-  writtenRating: number;
-  unchanged: number;
-  failed: number;
-};
-
-export function newSyncCounters(): SyncCounters {
-  return {
-    scanned: 0,
-    skippedCategory: 0,
-    skippedShelf: 0,
-    skippedCached: 0,
-    skippedDuplicate: 0,
-    matchedTmdbLink: 0,
-    matchedImdb: 0,
-    matchedSearch: 0,
-    unmatched: 0,
-    writtenWatchlist: 0,
-    writtenRating: 0,
-    unchanged: 0,
-    failed: 0,
-  };
-}
-
-// ───────────────────────────────────────────────────────────────────────────
-// Per-path result reporting
-// ───────────────────────────────────────────────────────────────────────────
-
-/**
- * Outcome of one sync path, consumed by the closing summary.
- *
- * Two counts are deliberately treated differently by the exit code:
- *
- *   `unresolved` — the destination simply has no counterpart for this entry
- *                  (an obscure OVA, a book NeoDB never catalogued). That is a
- *                  data gap, not a defect: record it and warn, but never fail
- *                  the run, or CI would go red on every pass.
- *   `failed`     — something threw. A real error: fail the run.
- */
-export type PathReport = {
-  /** Shown in the summary, e.g. `Bangumi → NeoDB`. */
-  label: string;
-  scanned: number;
-  written: number;
-  unchanged: number;
-  skipped: number;
-  unresolved: number;
-  failed: number;
-  /** A configured cap stopped the run before everything was walked. */
-  capped: boolean;
-  /** The path could not run at all (missing credentials, network failure). */
-  aborted: boolean;
-  /** Titles needing a human look, in encounter order. */
-  unresolvedTitles: string[];
-  /** Set only when entries were actually appended to it. */
-  reviewLog: string;
-};
-
-export function newPathReport(label: string): PathReport {
-  return {
-    label,
-    scanned: 0,
-    written: 0,
-    unchanged: 0,
-    skipped: 0,
-    unresolved: 0,
-    failed: 0,
-    capped: false,
-    aborted: false,
-    unresolvedTitles: [],
-    reviewLog: '',
-  };
-}
-
-/** Whether this report should make the run exit non-zero. */
-export function pathHasFailed(report: PathReport): boolean {
-  return report.aborted || report.failed > 0;
-}
+export type TmdbRatingPolicy = 'tmdb_prefer' | 'overwrite';

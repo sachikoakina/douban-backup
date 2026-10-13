@@ -1,4 +1,4 @@
-import type { NeodbMergeProfile } from './sync-config';
+import type { NeodbMergePolicy } from '../config/env-parsers';
 
 /** Minimal mark shape for merge (avoids circular import with neodb.ts). */
 export type NeodbMarkLike = {
@@ -31,7 +31,7 @@ export type MergedNeodbMark = {
 export function mergeNeodbMark(
   existing: NeodbMarkLike | null,
   source: NeodbMarkSource,
-  profile: NeodbMergeProfile,
+  profile: NeodbMergePolicy,
   targetVisibility: number,
 ): MergedNeodbMark {
   if (!existing) {

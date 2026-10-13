@@ -1,19 +1,23 @@
 import { consola } from 'consola';
-import { fetchRSSFeeds, handleRSSFeeds } from './handle-rss';
-import handleNotion from './handle-notion';
-import handleNeodb from './handle-neodb';
-import handleBangumi from './handle-bangumi';
-import handleBangumiToNeodb from './handle-bangumi-neodb';
-import runNeodbToTmdb from './handle-neodb-tmdb';
-import { ItemStatus, newPathReport, pathHasFailed, type PathReport } from './types';
+import { fetchRSSFeeds } from '../clients/douban-rss-fetcher';
+import { handleRSSFeeds } from '../domain/douban-rss-parser';
+import handleNotion from '../paths/douban-to-notion';
+import handleNeodb from '../paths/douban-to-neodb';
+import handleBangumi from '../paths/douban-to-bangumi';
+import handleBangumiToNeodb from '../paths/bangumi-to-neodb';
+import runNeodbToTmdb from '../paths/neodb-to-tmdb';
+import { ItemStatus } from '../types/platform-model';
+import { newPathReport, pathHasFailed, type PathReport } from '../report/path-report';
 import {
   describeNeodbTmdbConfig,
+  neodbTmdbConfig,
+} from '../config/neodb-tmdb-settings';
+import {
   describeSyncConfig,
   needsDoubanRss,
-  neodbTmdbConfig,
   syncConfig,
-} from './sync-config';
-import { printOverallSummary } from './sync-report';
+} from '../config/sync-switches';
+import { printOverallSummary } from '../report/console-summary';
 
 async function main(): Promise<void> {
   consola.info('Sync paths: ', describeSyncConfig());

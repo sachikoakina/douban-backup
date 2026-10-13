@@ -1,16 +1,15 @@
 import dotenv from 'dotenv';
 import { consola } from 'consola';
+import { newPathReport, type PathReport } from '../report/path-report';
 import {
-  newPathReport,
   type BangumiCollectionType,
   type BangumiSubjectType,
-  type PathReport,
-} from './types';
+} from '../types/platform-model';
 import {
   BANGUMI_TO_NEODB_STATUS,
   bangumiCollectionToNeodbProgress,
   neodbItemSupportsProgress,
-} from './const';
+} from '../domain/platform-mappings';
 import {
   bangumiCollectionLimit,
   bangumiSubjectUrl,
@@ -20,7 +19,7 @@ import {
   getBangumiSubject,
   listBangumiCollections,
   type BangumiCollection,
-} from './bangumi';
+} from '../clients/bangumi-client';
 import {
   getNeodbMark,
   getNeodbProgress,
@@ -30,16 +29,16 @@ import {
   resolveNeodbItemForBangumiUrl,
   setNeodbProgress,
   type NeodbItem,
-} from './neodb';
-import { mergeNeodbMark } from './neodb-merge';
+} from '../clients/neodb-mark-client';
+import { mergeNeodbMark } from '../domain/neodb-mark-merge';
 import {
   bangumiSubjectTypesForAllowlist,
   needsBangumiMangaPlatformCheck,
   syncConfig,
   unmatchedLogFile,
-} from './sync-config';
-import { upsertReviewEntry } from './utils';
-import { printPathSummary } from './sync-report';
+} from '../config/sync-switches';
+import { upsertReviewEntry } from '../report/unresolved-review-log';
+import { printPathSummary } from '../report/console-summary';
 
 dotenv.config();
 

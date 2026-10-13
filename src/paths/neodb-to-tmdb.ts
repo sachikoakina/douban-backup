@@ -7,15 +7,23 @@ import {
   extractNeodbYear,
   extractTmdbTargetFromNeodb,
   toShelfType,
-} from './const';
+} from '../domain/platform-mappings';
 import {
   neodbTmdbConfig,
   describeNeodbTmdbConfig,
   resolveTargetCategories,
   validateNeodbTmdbCredentials,
-} from './sync-config';
-import { resolveTmdbOperations, type TmdbOperationPlan } from './tmdb-mapping';
-import { fetchShelf, getNeodbMe, neodbThrottle, verifyNeodbToken } from './neodb';
+} from '../config/neodb-tmdb-settings';
+import {
+  resolveTmdbOperations,
+  type TmdbOperationPlan,
+} from '../domain/neodb-shelf-to-tmdb.mapping';
+import {
+  fetchShelf,
+  getNeodbMe,
+  neodbThrottle,
+  verifyNeodbToken,
+} from '../clients/neodb-shelf-client';
 import {
   findTmdbByImdbId,
   getTmdbAccount,
@@ -29,28 +37,25 @@ import {
   setTmdbWatchlist,
   tmdbThrottle,
   type TmdbAuth,
-} from './tmdb';
-import { planTmdbWrites, type TmdbPatch } from './tmdb-merge';
+} from '../clients/tmdb-client';
+import { planTmdbWrites, type TmdbPatch } from '../domain/tmdb-write-plan';
 import {
   fingerprintMark,
   readState,
   stateKey,
-  upsertReviewEntry,
   writeState,
   type SyncState,
-} from './utils';
+} from '../state/incremental-sync-state';
+import { upsertReviewEntry } from '../report/unresolved-review-log';
+import { newPathReport, pathHasFailed, type PathReport } from '../report/path-report';
+import { newSyncCounters, type SyncCounters } from '../domain/tmdb-sync-counters';
 import {
-  newPathReport,
-  newSyncCounters,
-  pathHasFailed,
-  type NeodbShelfMark,
-  type PathReport,
+  type NeodbShelfEntry,
   type ShelfType,
-  type SyncCounters,
   type TmdbMediaType,
   type TmdbTarget,
-} from './types';
-import { printPathSummary } from './sync-report';
+} from '../types/platform-model';
+import { printPathSummary } from '../report/console-summary';
 
 const LABEL = 'NeoDB → TMDB';
 
@@ -73,12 +78,13 @@ type SyncContext = {
 /**
  * NeoDB shelf → TMDB, one-way.
  *
- * Each mark is resolved through `resolveTmdbOperations` (see mapping.ts) into a
- * plan, then diffed against the live TMDB state so that re-running is always
- * safe. Nothing here encodes mapping knowledge.
+ * Each mark is resolved through `resolveTmdbOperations`
+ * (see domain/neodb-shelf-to-tmdb.mapping.ts) into a plan, then diffed against
+ * the live TMDB state so that re-running is always safe. Nothing here encodes
+ * mapping knowledge.
  *
  * @returns a report of what happened. The caller decides the exit code from it
- * (`pathHasFailed`), and `index.ts` folds it into the closing summary.
+ * (`pathHasFailed`), and `cli/sync-by-switches.ts` folds it into the closing summary.
  */
 export default async function runSync(): Promise<PathReport> {
   const report = newPathReport(LABEL);
@@ -199,7 +205,7 @@ async function syncShelf(shelfType: ShelfType, ctx: SyncContext): Promise<void> 
 }
 
 async function syncMark(
-  mark: NeodbShelfMark,
+  mark: NeodbShelfEntry,
   expectedShelf: ShelfType,
   ctx: SyncContext,
 ): Promise<void> {
@@ -355,7 +361,7 @@ async function applyPatch(
  *   3) title + year → /3/search                    — strict exact-title comparison
  */
 async function resolveTarget(
-  item: NeodbShelfMark['item'],
+  item: NeodbShelfEntry['item'],
   mediaType: TmdbMediaType,
   ctx: SyncContext,
 ): Promise<TmdbTarget | null> {

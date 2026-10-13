@@ -294,7 +294,7 @@
 | `year` / `pub_year`                              | —                               | 搜索年份佐证       | 容差由 `SYNC_YEAR_TOLERANCE` 控制 |
 | `shelf_type` + `rating_grade`                    | 见下方状态映射                  | watchlist / rating | 由 `resolveTmdbOperations()` 决定 |
 
-▸ **状态映射规则**（本章核心。权威定义在 **`src/tmdb-mapping.ts` 的 `resolveTmdbOperations()`**，改行为只改这里）：
+▸ **状态映射规则**（本章核心。权威定义在 **`src/domain/neodb-shelf-to-tmdb.mapping.ts` 的 `resolveTmdbOperations()`**，改行为只改这里）：
 
 | NeoDB 状态      | 条件               | TMDB 操作                           |
 | --------------- | ------------------ | ----------------------------------- |
@@ -385,7 +385,7 @@ TMDB 侧实际调用的端点：
   - `neodb_prefer`（默认）：NeoDB 上**已有值非空则保留**，只填空缺
   - `overwrite`：总是用来源值覆盖
 
-**执行顺序会造成实际差异**：`index.ts` 中豆瓣链路先跑、Bangumi → NeoDB 后跑。所以同一作品若两边状态不同，**最终以 Bangumi 为准**。
+**执行顺序会造成实际差异**：`src/cli/sync-by-switches.ts` 中豆瓣链路先跑、Bangumi → NeoDB 后跑。所以同一作品若两边状态不同，**最终以 Bangumi 为准**。
 
 想改变这个结果，有三种做法：
 
@@ -469,14 +469,14 @@ TMDB 只能写两个端点：rating 和 watchlist。
 
 #### Bangumi → NeoDB：这 50 条是怎么筛出来的
 
-请求打到 `GET /v0/users/{username}/collections`，**只带 `limit` 与 `offset`，不传 `type` 参数**（见 `src/bangumi.ts` 的 `listBangumiCollections`）。由此产生两个结论：
+请求打到 `GET /v0/users/{username}/collections`，**只带 `limit` 与 `offset`，不传 `type` 参数**（见 `src/clients/bangumi-client.ts` 的 `listBangumiCollections`）。由此产生两个结论：
 
 - **不按状态筛选**：`type` 留空即返回**全部收藏状态**——「想看」「在看」「看过」「搁置」「抛弃」都混在结果里，按 Bangumi API 的默认顺序排列（实践上约等于标记时间倒序），**不是**只取「在看 / 已看 / 想看」三种。它也不做「最新记录」的二次排序，代码没有排序逻辑。
 - **不按类别筛选**：类别过滤发生在**取回之后**。`SYNC_BANGUMI_NEODB_CATEGORIES` 先转成 `subject_type` 查询参数（如只填 `anime` 就只请求 subject_type=2），未指定的剩余类型才在本地逐条判断。
 
 > 一个例外：漫画检查。当白名单只含 `manga` 不含 `book` 时，需要额外调 `GET /v0/subjects/{id}` 判断 `platform` 是否为「漫画」，非漫画的书籍跳过——这是**逐条**请求，所以该模式下会显著变慢。
 
-**开启全量后是否覆盖全部收藏**：是。`fullSync` 时的循环会以 `offset += page.data.length` 持续翻页，直到 `offset >= page.total` 或 API 返回空页（见 `handle-bangumi-neodb.ts` 第 79–107 行）。也就是把该 `subject_type` 下的**全部收藏条目**都走一遍。
+**开启全量后是否覆盖全部收藏**：是。`fullSync` 时的循环会以 `offset += page.data.length` 持续翻页，直到 `offset >= page.total` 或 API 返回空页（见 `src/paths/bangumi-to-neodb.ts` 的翻页循环）。也就是把该 `subject_type` 下的**全部收藏条目**都走一遍。
 
 但有两点需要注意：
 
@@ -585,7 +585,7 @@ TMDB 只能写两个端点：rating 和 watchlist。
 [warn] 6 unmatched item(s) written to .cache/unmatched.json.
 ```
 
-▸ **运行结束时的总表**（`index.ts` 在所有链路跑完后输出）：
+▸ **运行结束时的总表**（`src/cli/sync-by-switches.ts` 在所有链路跑完后输出）：
 
 ```
 ┌──────────────────────────────────────────────────────────────────────────────────────────────────────┐
@@ -838,119 +838,160 @@ NOTION_BOOK_DATABASE_ID  NOTION_GAME_DATABASE_ID  NOTION_DRAMA_DATABASE_ID
 
 ---
 
-## 与上游同步
+## 与上游的关系
 
-本仓库**独立初始化**，与 `viazure/douban-backup` **没有共同 git 历史**——所以 `git merge` / `rebase` / `pull upstream` 都不可用：缺少共同基线，几乎所有共享文件都会被判为冲突。把上游当作**只读参考源**，按需手动搬运即可：
+本项目 fork 自 `viazure/douban-backup`（下称"上游"），但在其上新增了**第 5 条链路 NeoDB → TMDB**，并对原有四条链路做了结构性重构（目录分层、文件拆分、命名与注释清理）。
+
+经评估后，本仓库**按独立项目自行维护全部五条链路**，不再用 GitHub 的 "Sync fork" 或 `git pull upstream` 同步上游，理由：
+
+| 事实                                                        | 后果                                            |
+| ----------------------------------------------------------- | ----------------------------------------------- |
+| 上游最近 60 次提交中 **72% 是 dependabot 的依赖升级**       | 升级集中在 `package.json` / `package-lock.json` |
+| 这两个文件正是本项目改动最大的文件                          | 同步几乎必然冲突，需逐次手工解决                |
+| 上游其余提交触及的 `neodb.ts`、`handle-bangumi-neodb.ts` 等 | 均被本项目**交错式改写**，无法整文件覆盖        |
+
+因此上游仅作**只读参考**；确需搬运某个文件时，务必：
 
 ```bash
-git fetch upstream                              # 只读，安全
-git diff --stat <基线>..upstream/main           # 看影响了哪些文件
-git checkout upstream/main -- <file>            # 未改动过的文件直接取
-npm run typecheck && npm run verify:mapping     # 必须验证
+git fetch upstream                                    # 只读，安全
+git diff --ignore-all-space <基线>..upstream/main      # 本项目经 prettier 格式化，必须忽略空白差异
+# 确认后才搬运单个文件
+npm run typecheck && npm run verify:mapping           # 必须验证
 ```
 
-`upstream` 的 push 地址已设为 `DISABLED_READ_ONLY`，防止误推。当前基线：`dbfef37`。
-
-### 文件分类（决定搬运方式）
-
-| 类别       | 文件                                                                                                                     | 处理         |
-| ---------- | ------------------------------------------------------------------------------------------------------------------------ | ------------ |
-| 与上游一致 | `bangumi.ts` `handle-rss` `handle-neodb` `handle-notion` `handle-douban` `handle-bangumi` `neodb-merge`                  | 可直接覆盖   |
-| 已追加修改 | `const.ts` `types.ts` `utils.ts` `sync-config.ts` `neodb.ts` `index.ts` `handle-bangumi-neodb.ts` `sync-bangumi-full.ts` | 手工合并     |
-| 本项目独有 | `tmdb-mapping.ts` `handle-neodb-tmdb.ts` `tmdb.ts` `tmdb-merge.ts` `sync-tmdb-only.ts` `sync-report.ts` `docs/`          | 不受同步影响 |
-
-> 比较文件时**务必用 `diff --ignore-all-space`**：本项目经 prettier 格式化，上游未格式化，直接 diff 会把折行差异误报成大面积冲突。
->
-> `handle-bangumi-neodb.ts` 起初只与上游有格式化差异，加入未解析条目留档后已属「已追加修改」；`sync-bangumi-full.ts` 同理（改为消费汇总报告）。
+> 依赖升级与依赖安全由本项目自行负责（见 `package.json` / dependabot 配置）。
 
 ---
 
 ## 目录结构
 
 ```
-Douban-Shelf-Archivist/
-├── src/                      核心源码
-│   ├── index.ts              总入口：按开关调度所有链路
-│   │
-│   ├── sync-config.ts        配置中枢：唯一的 env 读取点
-│   ├── types.ts              全部类型定义（含 NeoDB/TMDB）
-│   ├── const.ts              常量与纯转换函数
-│   ├── utils.ts              通用工具 + 增量同步状态管理
-│   ├── sync-report.ts        结果展示层：收尾汇总、自检、Actions 注解
-│   │
-│   ├── neodb.ts              NeoDB 客户端（写入 + 书架读取）
-│   ├── bangumi.ts            Bangumi 客户端
-│   ├── tmdb.ts               TMDB 客户端
-│   │
-│   ├── handle-rss.ts         解析豆瓣 RSS
-│   ├── handle-douban.ts      抓取豆瓣详情页
-│   ├── handle-notion.ts      写入 Notion
-│   ├── handle-neodb.ts       豆瓣 → NeoDB 编排
-│   ├── handle-bangumi.ts     豆瓣 → Bangumi 编排
-│   ├── handle-bangumi-neodb.ts  Bangumi → NeoDB 编排
-│   ├── handle-neodb-tmdb.ts  NeoDB → TMDB 编排
-│   │
-│   ├── neodb-merge.ts        标记合并（纯函数）
-│   ├── tmdb-mapping.ts       状态映射定义 ★ 改行为改这里
-│   ├── tmdb-merge.ts         写入计划计算（纯函数）
-│   │
-│   ├── sync-bangumi-full.ts  Bangumi 全量入口
-│   └── sync-tmdb-only.ts     NeoDB → TMDB 独立入口
+src/
+├── cli/                        进程入口（每种运行方式一个文件）
+│   ├── sync-by-switches.ts         总入口：按开关依次调度五条链路
+│   ├── sync-neodb-to-tmdb.ts       只跑 NeoDB → TMDB
+│   └── sync-bangumi-to-neodb-full.ts  Bangumi → NeoDB 全量补齐
 │
-├── scripts/                  辅助脚本
-│   ├── probe-neodb-shelf.ts    探测 NeoDB 书架响应结构
-│   ├── verify-tmdb-mapping.ts  映射逻辑离线断言（57 项）
-│   ├── update-notion.ts        批量更新 Notion
-│   └── db-notes-img-dl.ts      下载豆瓣笔记配图
-├── userscript/               浏览器用户脚本（手动导出用）
-├── archive/                  旧的爬虫脚本，供参考
-├── docs/                     README 配图
-├── cols.json                 Notion 数据库列定义
-├── .github/workflows/        定时同步工作流
-├── .env.example              配置模板
-└── README.md
+├── config/                     配置：env 读取与解析
+│   ├── service-credentials.ts      凭据的唯一读取点（token / UA）
+│   ├── env-parsers.ts              通用 env 解析器（开关、白名单、合并策略）
+│   ├── sync-switches.ts            豆瓣/Bangumi 四条链路的开关与白名单
+│   └── neodb-tmdb-settings.ts      NeoDB → TMDB 链路的全部设置
+│
+├── clients/                    外部 API 客户端（有网络）
+│   ├── douban-rss-fetcher.ts       抓豆瓣个人 RSS
+│   ├── douban-subject-scraper.ts   抓豆瓣详情页
+│   ├── bangumi-client.ts           Bangumi 客户端
+│   ├── neodb-mark-client.ts        NeoDB 写入（打标 / 进度 / 检索）
+│   ├── neodb-shelf-client.ts       NeoDB 书架读取（baseUrl 可配置）
+│   └── tmdb-client.ts              TMDB 客户端
+│
+├── domain/                     领域逻辑（纯函数，无网络，可离线断言）
+│   ├── platform-mappings.ts        跨平台常量与转换（评分/年份/ID 提取）
+│   ├── douban-rss-parser.ts        豆瓣 RSS 条目归一化
+│   ├── neodb-mark-merge.ts         标记合并（评分 / 评论冲突）
+│   ├── neodb-shelf-to-tmdb.mapping.ts  状态映射 ★ 改行为改这里
+│   ├── tmdb-write-plan.ts          写入计划差分（幂等的核心）
+│   └── tmdb-sync-counters.ts       NeoDB → TMDB 的细分计数器
+│
+├── paths/                      五条链路的编排（调度 + 错误隔离）
+│   ├── douban-to-notion.ts
+│   ├── douban-to-neodb.ts
+│   ├── douban-to-bangumi.ts
+│   ├── bangumi-to-neodb.ts
+│   └── neodb-to-tmdb.ts
+│
+├── report/                     结果展示与留档
+│   ├── console-summary.ts          收尾汇总、自检、Actions 注解
+│   ├── path-report.ts              各链路结果契约 PathReport
+│   └── unresolved-review-log.ts    未处理条目留档（upsert）
+│
+├── shared/                     跨链路复用
+│   ├── http-client.ts              重试策略与错误格式化（tmdb / neodb 共用）
+│   └── notion-property-value.ts    Notion 属性载荷构造
+│
+├── state/
+│   └── incremental-sync-state.ts   增量同步指纹（NeoDB → TMDB）
+│
+└── types/
+    ├── platform-model.ts           跨平台数据模型
+    └── notion.ts                   Notion 载荷类型
+
+scripts/                     辅助脚本
+├── probe-neodb-shelf.ts        探测 NeoDB 书架响应结构
+├── verify-tmdb-mapping.ts      映射逻辑离线断言（57 项）
+├── update-notion.ts            批量更新 Notion
+└── db-notes-img-dl.ts          下载豆瓣笔记配图
+userscript/                  浏览器用户脚本（手动导出用）
+archive/                     旧的爬虫脚本，供参考
+docs/                        README 配图
+cols.json                    Notion 数据库列定义
+.github/workflows/           定时同步工作流
+.env.example                 配置模板
 ```
 
 ---
 
 ## 各文件用途
 
-### 入口
+### 入口 `src/cli/`
 
-| 文件                       | 用途                  | 特性                                                         |
-| -------------------------- | --------------------- | ------------------------------------------------------------ |
-| `src/index.ts`             | 总入口                | 按开关依次调度；任一步失败设置退出码 1，但**不中断后续链路** |
-| `src/sync-tmdb-only.ts`    | NeoDB → TMDB 独立入口 | 只跑这一条链路，不影响原有 cron                              |
-| `src/sync-bangumi-full.ts` | Bangumi 全量入口      | 追加执行，用于首次补齐历史数据                               |
+| 文件                                | 用途                  | 特性                                                                 |
+| ----------------------------------- | --------------------- | -------------------------------------------------------------------- |
+| `cli/sync-by-switches.ts`           | 总入口                | 按开关依次调度五条链路；任一步失败设置退出码 1，但**不中断后续链路** |
+| `cli/sync-neodb-to-tmdb.ts`         | NeoDB → TMDB 独立入口 | 只跑这一条链路，不影响原有 cron                                      |
+| `cli/sync-bangumi-to-neodb-full.ts` | Bangumi 全量入口      | 追加执行，用于首次补齐历史数据                                       |
 
-### 配置与基础
+### 配置 `src/config/`
 
-| 文件                 | 用途         | 特性                                                                       |
-| -------------------- | ------------ | -------------------------------------------------------------------------- |
-| `src/sync-config.ts` | 配置中枢     | **唯一的 env 读取点**，便于审计；含 `syncConfig` 与 `neodbTmdbConfig` 两组 |
-| `src/sync-report.ts` | 结果展示     | 收尾汇总、一致性自检、未匹配条目分组列出；Actions 注解仅在 CI 输出         |
-| `src/types.ts`       | 类型定义     | `NeodbItem` 为两条链路的**合并超集**；`PathReport` 为各链路的结果契约      |
-| `src/const.ts`       | 常量与纯函数 | 评分换算、年份/链接提取、类别映射                                          |
-| `src/utils.ts`       | 通用工具     | 含增量同步的指纹计算、状态文件读写、未匹配条目留档（upsert + 首末时间戳）  |
+| 文件                            | 用途            | 特性                                                          |
+| ------------------------------- | --------------- | ------------------------------------------------------------- |
+| `config/service-credentials.ts` | 凭据读取        | NeoDB token / 可见性、豆瓣 UA 等凭据的**唯一读取点**          |
+| `config/env-parsers.ts`         | env 解析器      | 通用开关、类别白名单、合并策略解析；空值/非法值的回退规则在此 |
+| `config/sync-switches.ts`       | 链路开关        | 豆瓣/Bangumi 四条链路的开关与白名单（`syncConfig`）           |
+| `config/neodb-tmdb-settings.ts` | 第 5 条链路设置 | 默认关闭；`neodbTmdbConfig` 与凭据校验集中在此                |
 
-### 客户端
+### 客户端 `src/clients/`
 
-| 文件             | 用途           | 特性                                                           |
-| ---------------- | -------------- | -------------------------------------------------------------- |
-| `src/neodb.ts`   | NeoDB 客户端   | 两套：既有的写入逻辑 + 书架分页读取；请求带重试与限流          |
-| `src/tmdb.ts`    | TMDB 客户端    | 会话解析（v4→v3）、账号状态读取、评分/watchlist 写入、三级匹配 |
-| `src/bangumi.ts` | Bangumi 客户端 | 收藏读写（沿用上游实现）                                       |
+| 文件                                | 用途             | 特性                                                           |
+| ----------------------------------- | ---------------- | -------------------------------------------------------------- |
+| `clients/douban-rss-fetcher.ts`     | 抓豆瓣 RSS       | 只取 XML，不做归一化；对 401/403 限次重试                      |
+| `clients/douban-subject-scraper.ts` | 抓豆瓣详情页     | 含 PoW 签名与限流                                              |
+| `clients/bangumi-client.ts`         | Bangumi 客户端   | 收藏读写（沿用上游实现）                                       |
+| `clients/neodb-mark-client.ts`      | NeoDB 写入客户端 | 打标 / 进度 / 目录检索                                         |
+| `clients/neodb-shelf-client.ts`     | NeoDB 书架客户端 | 只读分页拉取，baseUrl 可配置（支持自建实例）                   |
+| `clients/tmdb-client.ts`            | TMDB 客户端      | 会话解析（v4→v3）、账号状态读取、评分/watchlist 写入、三级匹配 |
 
-### 编排与纯逻辑
+### 领域逻辑 `src/domain/`（纯函数，无网络）
 
-| 文件                  | 用途             | 特性                                                          |
-| --------------------- | ---------------- | ------------------------------------------------------------- |
-| `src/tmdb-mapping.ts` | **状态映射定义** | 纯函数，无 I/O；`complete` 的评分分支在此                     |
-| `src/tmdb-merge.ts`   | 写入计划计算     | 纯函数，把「想要的状态」与「TMDB 现状」做差分，**幂等的核心** |
-| `src/neodb-merge.ts`  | 标记合并         | 纯函数，处理评分/评论冲突                                     |
-| `src/handle-*.ts`     | 各链路编排       | 负责调度与错误隔离，不含业务规则                              |
+| 文件                                    | 用途             | 特性                                                |
+| --------------------------------------- | ---------------- | --------------------------------------------------- |
+| `domain/platform-mappings.ts`           | 常量与转换       | 评分换算、年份/链接提取、类别映射                   |
+| `domain/douban-rss-parser.ts`           | RSS 归一化       | 把原始 item 转成各链路统一消费的 `FeedItem`         |
+| `domain/neodb-mark-merge.ts`            | 标记合并         | 处理评分 / 评论冲突                                 |
+| `domain/neodb-shelf-to-tmdb.mapping.ts` | **状态映射定义** | `complete` 的评分分支在此                           |
+| `domain/tmdb-write-plan.ts`             | 写入计划计算     | 把「想要的状态」与「TMDB 现状」差分，**幂等的核心** |
+| `domain/tmdb-sync-counters.ts`          | 计数器           | NeoDB → TMDB 的细分统计，折叠成 `PathReport`        |
 
-> 三个纯函数模块（`mapping` / `tmdb-merge` / `neodb-merge`）无网络依赖，所以能离线跑断言验证。
+### 编排 / 展示 / 复用 / 状态 / 类型
+
+| 文件                              | 用途                 | 特性                                                           |
+| --------------------------------- | -------------------- | -------------------------------------------------------------- |
+| `paths/douban-to-notion.ts`       | 豆瓣 → Notion 编排   | 调度 + 错误隔离，不含业务规则                                  |
+| `paths/douban-to-neodb.ts`        | 豆瓣 → NeoDB 编排    | 同上                                                           |
+| `paths/douban-to-bangumi.ts`      | 豆瓣 → Bangumi 编排  | 同上                                                           |
+| `paths/bangumi-to-neodb.ts`       | Bangumi → NeoDB 编排 | 同上                                                           |
+| `paths/neodb-to-tmdb.ts`          | NeoDB → TMDB 编排    | 同上                                                           |
+| `report/console-summary.ts`       | 结果展示             | 收尾汇总、一致性自检、未匹配条目分组；Actions 注解仅在 CI 输出 |
+| `report/path-report.ts`           | 结果契约             | `PathReport` 与退出码判定 `pathHasFailed`                      |
+| `report/unresolved-review-log.ts` | 留档                 | 未处理条目 upsert（保留首末时间戳）                            |
+| `shared/http-client.ts`           | HTTP 复用            | 重试策略（`Retry-After` + 指数退避）与错误格式化               |
+| `shared/notion-property-value.ts` | Notion 复用          | 属性载荷构造                                                   |
+| `state/incremental-sync-state.ts` | 增量状态             | 指纹计算、状态文件读写                                         |
+| `types/platform-model.ts`         | 跨平台模型           | `NeodbItem` 为两条链路的**合并超集**                           |
+| `types/notion.ts`                 | Notion 载荷类型      | 由 `shared/notion-property-value.ts` 构造                      |
+
+> `domain/` 与 `shared/` 均无网络依赖，所以能离线跑断言验证（`npm run verify:mapping`）。
 
 ### 辅助
 

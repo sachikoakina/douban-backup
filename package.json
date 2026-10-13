@@ -5,9 +5,9 @@
   "type": "module",
   "private": true,
   "scripts": {
-    "sync": "tsx src/index.ts",
-    "sync:bangumi-full": "tsx src/sync-bangumi-full.ts",
-    "sync:neodb-tmdb": "tsx src/sync-tmdb-only.ts",
+    "sync": "tsx src/cli/sync-by-switches.ts",
+    "sync:bangumi-full": "tsx src/cli/sync-bangumi-to-neodb-full.ts",
+    "sync:neodb-tmdb": "tsx src/cli/sync-neodb-to-tmdb.ts",
     "probe:neodb": "tsx scripts/probe-neodb-shelf.ts",
     "verify:mapping": "tsx scripts/verify-tmdb-mapping.ts",
     "format": "prettier --write .",

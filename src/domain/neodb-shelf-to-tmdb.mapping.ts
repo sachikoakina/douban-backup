@@ -1,5 +1,5 @@
-import { neodbGradeToTmdbRating } from './const';
-import type { ShelfType } from './types';
+import { neodbGradeToTmdbRating } from './platform-mappings';
+import type { ShelfType } from '../types/platform-model';
 
 /**
  * ═══════════════════════════════════════════════════════════════════════════

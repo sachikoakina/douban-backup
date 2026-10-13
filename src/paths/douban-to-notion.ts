@@ -3,18 +3,18 @@ import dayjs from 'dayjs';
 import dotenv from 'dotenv';
 import { Client } from '@notionhq/client';
 import { type CreatePageParameters } from '@notionhq/client/build/src/api-endpoints';
-import scrapyDouban from './handle-douban';
-import { getDataSourceId, sleep, buildPropertyValue } from './utils';
-import { PropertyTypeMap, EMOJI } from './const';
-import DB_PROPERTIES from '../cols.json';
+import scrapyDouban from '../clients/douban-subject-scraper';
+import { getDataSourceId, buildPropertyValue } from '../shared/notion-property-value';
+import { sleep } from '../shared/http-client';
+import { PropertyTypeMap, EMOJI } from '../domain/platform-mappings';
+import DB_PROPERTIES from '../../cols.json';
 import {
   ItemCategory,
   type FeedItem,
-  type NotionUrlPropType,
   type DB_PROPERTIES_KEYS,
-  type FailedItem,
-} from './types';
-import { filterDoubanFeedsByCategory, syncConfig } from './sync-config';
+} from '../types/platform-model';
+import { type NotionUrlPropType, type FailedItem } from '../types/notion';
+import { filterDoubanFeedsByCategory, syncConfig } from '../config/sync-switches';
 
 // https://github.com/makenotion/notion-sdk-js/issues/280#issuecomment-1178523498
 type EmojiRequest = Extract<CreatePageParameters['icon'], { type?: 'emoji' }>['emoji'];
@@ -32,8 +32,9 @@ const notion = new Client({
  * to one Notion database.
  *
  * @param {FeedItem[]} feeds - The array of feed items to be handled
- * @return {Promise<void>} A promise that resolves when all feeds are synced to
- * the Notion database
+ * @return {Promise<void>} resolves when all feeds are synced; **throws** when a
+ * category fails, so the caller records it in the closing summary instead of
+ * terminating the process mid-run (which would swallow that summary).
  */
 export default async function handleNotion(feeds: FeedItem[]): Promise<void> {
   const filtered = filterDoubanFeedsByCategory(
@@ -64,7 +65,7 @@ export default async function handleNotion(feeds: FeedItem[]): Promise<void> {
       }
     } catch (error) {
       consola.error(`Failed to handle ${category} feeds. `, error);
-      process.exit(1);
+      throw error;
     }
   }
 
@@ -73,7 +74,7 @@ export default async function handleNotion(feeds: FeedItem[]): Promise<void> {
     for (const item of AllFailedItems) {
       consola.warn(`${item.title}: ${item.link}`);
     }
-    process.exit(1);
+    throw new Error(`${AllFailedItems.length} item(s) failed to insert into Notion`);
   }
 }
 
@@ -119,7 +120,7 @@ async function syncNotionDB(
         `Failed to query ${category} database to check already inserted items. `,
         error,
       );
-      process.exit(1);
+      throw error;
     });
 
   const alreadyInsertedItems = new Set(

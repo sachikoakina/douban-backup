@@ -1,6 +1,5 @@
 import {
   type DB_PROPERTIES_KEYS,
-  NotionPropTypesEnum,
   ItemStatus,
   ItemCategory,
   type BangumiSubjectType,
@@ -11,7 +10,8 @@ import {
   type ShelfType,
   type TmdbAccountStates,
   type TmdbMediaType,
-} from './types';
+} from '../types/platform-model';
+import { NotionPropTypesEnum } from '../types/notion';
 
 export const ALL_STATUS =
   /^(?:最近)?(看过|听过|读过|玩过|在看|在听|在读|在玩|想看|想听|想读|想玩)/;
@@ -199,8 +199,9 @@ export function neodbItemSupportsProgress(
 // ───────────────────────────────────────────────────────────────────────────
 // NeoDB → TMDB path
 //
-// The shelf → TMDB mapping itself lives in `mapping.ts`. This section only
-// holds facts about the two APIs and the pure helpers built on them.
+// The shelf → TMDB mapping itself lives in
+// `domain/neodb-shelf-to-tmdb.mapping.ts`. This section only holds facts about
+// the two APIs and the pure helpers built on them.
 // ───────────────────────────────────────────────────────────────────────────
 
 /**

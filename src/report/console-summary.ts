@@ -1,13 +1,14 @@
 import fs from 'node:fs';
 import { consola } from 'consola';
-import { pathHasFailed, type PathReport } from './types';
+import { pathHasFailed, type PathReport } from './path-report';
 
 /**
  * Display layer for sync results.
  *
  * Kept out of the sync logic so presentation can change without touching
- * behaviour, and so every entry point (`index.ts`, `sync-tmdb-only.ts`,
- * `sync-bangumi-full.ts`) renders results the same way.
+ * behaviour, and so every entry point (`cli/sync-by-switches.ts`,
+ * `cli/sync-neodb-to-tmdb.ts`, `cli/sync-bangumi-to-neodb-full.ts`) renders
+ * results the same way.
  */
 
 /**

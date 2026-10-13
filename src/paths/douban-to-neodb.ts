@@ -1,8 +1,8 @@
 import dotenv from 'dotenv';
 import { consola } from 'consola';
-import type { FeedItem } from './types';
-import { neodbToken, syncFeedItemToNeodb } from './neodb';
-import { filterDoubanFeedsByCategory, syncConfig } from './sync-config';
+import type { FeedItem } from '../types/platform-model';
+import { neodbToken, syncFeedItemToNeodb } from '../clients/neodb-mark-client';
+import { filterDoubanFeedsByCategory, syncConfig } from '../config/sync-switches';
 
 dotenv.config();
 

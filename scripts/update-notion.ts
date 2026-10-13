@@ -18,9 +18,9 @@ import type {
 import dayjs from 'dayjs';
 import got from 'got';
 import { JSDOM } from 'jsdom';
-import { sleep } from '../src/utils';
+import { sleep } from '../src/shared/http-client';
 import DB_PROPERTIES from '../cols.json';
-import type { NotionDatePropType } from '../src/types';
+import type { NotionDatePropType } from '../src/types/notion';
 
 dotenv.config();
 

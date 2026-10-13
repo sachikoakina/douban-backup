@@ -44,6 +44,31 @@ jobs:
       SYNC_BANGUMI_NEODB_MERGE: ${{ vars.SYNC_BANGUMI_NEODB_MERGE || 'neodb_prefer' }}
       SYNC_BANGUMI_NEODB_PROGRESS: ${{ vars.SYNC_BANGUMI_NEODB_PROGRESS || '0' }}
 
+      # ── NeoDB → TMDB（第 5 条链路，默认关闭）──────────────────────────────
+      # 变量只有在工作流里被引用才会生效；不设 SYNC_NEODB_TMDB=1 则整条链路跳过。
+      # CI runner 是临时环境，增量状态文件不跨次保留，故 SYNC_INCREMENTAL 默认 0。
+      SYNC_NEODB_TMDB: ${{ vars.SYNC_NEODB_TMDB || '0' }}
+      SYNC_SHELF_TYPES: ${{ vars.SYNC_SHELF_TYPES || '' }}
+      SYNC_CATEGORIES: ${{ vars.SYNC_CATEGORIES || '' }}
+      SYNC_DRY_RUN: ${{ vars.SYNC_DRY_RUN || '0' }}
+      SYNC_MAX_ITEMS: ${{ vars.SYNC_MAX_ITEMS || '200' }}
+      SYNC_RATING_PROFILE: ${{ vars.SYNC_RATING_PROFILE || 'tmdb_prefer' }}
+      SYNC_YEAR_TOLERANCE: ${{ vars.SYNC_YEAR_TOLERANCE || '1' }}
+      SYNC_INCREMENTAL: ${{ vars.SYNC_INCREMENTAL || '0' }}
+      SYNC_STATE_FILE: ${{ vars.SYNC_STATE_FILE || '.cache/sync-state.json' }}
+      SYNC_UNMATCHED_LOG: ${{ vars.SYNC_UNMATCHED_LOG || '.cache/unmatched.json' }}
+      NEODB_BASE_URL: ${{ vars.NEODB_BASE_URL || 'https://neodb.social' }}
+      NEODB_REQUEST_DELAY_MS: ${{ vars.NEODB_REQUEST_DELAY_MS || '300' }}
+      NEODB_MAX_PAGES: ${{ vars.NEODB_MAX_PAGES || '10' }}
+      TMDB_API_KEY: ${{ secrets.TMDB_API_KEY }}
+      TMDB_ACCESS_TOKEN: ${{ secrets.TMDB_ACCESS_TOKEN }}
+      TMDB_SESSION_ID: ${{ secrets.TMDB_SESSION_ID }}
+      TMDB_ACCOUNT_ID: ${{ secrets.TMDB_ACCOUNT_ID }}
+      TMDB_BASE_URL: ${{ vars.TMDB_BASE_URL || 'https://api.themoviedb.org/3' }}
+      TMDB_LANGUAGE: ${{ vars.TMDB_LANGUAGE || 'zh-CN' }}
+      TMDB_INCLUDE_ADULT: ${{ vars.TMDB_INCLUDE_ADULT || '0' }}
+      TMDB_REQUEST_DELAY_MS: ${{ vars.TMDB_REQUEST_DELAY_MS || '300' }}
+
     steps:
       - uses: actions/checkout@v6
       - name: Use Node.js ${{ matrix.node-version }}

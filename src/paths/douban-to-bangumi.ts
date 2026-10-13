@@ -1,17 +1,17 @@
 import dotenv from 'dotenv';
 import { consola } from 'consola';
-import type { FeedItem } from './types';
-import { ItemCategory } from './types';
+import type { FeedItem } from '../types/platform-model';
+import { ItemCategory } from '../types/platform-model';
 import {
   BANGUMI_STATUSES_ABSENT_FROM_DOUBAN,
   CATEGORY_TO_BANGUMI_TYPES,
   NEODB_TO_BANGUMI_COLLECTION,
-} from './const';
+} from '../domain/platform-mappings';
 import {
   extractBangumiIdFromNeodb,
   fetchNeodbItemByUrl,
   type NeodbItem,
-} from './neodb';
+} from '../clients/neodb-mark-client';
 import {
   bangumiPrivate,
   bangumiToken,
@@ -22,8 +22,8 @@ import {
   pickExactBangumiMatch,
   searchBangumiSubjects,
   upsertBangumiCollection,
-} from './bangumi';
-import { filterDoubanFeedsByCategory, syncConfig } from './sync-config';
+} from '../clients/bangumi-client';
+import { filterDoubanFeedsByCategory, syncConfig } from '../config/sync-switches';
 
 dotenv.config();
 

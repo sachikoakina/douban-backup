@@ -4,9 +4,9 @@ import { CookieJar } from 'tough-cookie';
 import { JSDOM } from 'jsdom';
 import dayjs from 'dayjs';
 import { consola } from 'consola';
-import { ItemCategory } from './types';
-import DB_PROPERTIES from '../cols.json';
-import { sleep } from './utils';
+import { ItemCategory } from '../types/platform-model';
+import DB_PROPERTIES from '../../cols.json';
+import { sleep } from '../shared/http-client';
 
 // 创建一个持久化的 CookieJar 实例，建议放在函数外部以维持会话
 const cookieJar = new CookieJar();
@@ -186,8 +186,8 @@ function buildMusicItem(doc: Document) {
     if (/\d{4}-\d/.test(text) && text) {
       releaseDate = dayjs(text).format('YYYY-MM-DD');
     } else if (/\d{4}年\d{1,2}月\d{2}日/.test(text)) {
-      // BUG: example: https://music.douban.com/subject/2375247/
-      // 发行时间是中文格式，非`YYYY-MM-DD`
+      // 豆瓣音乐等类目的发行时间是中文格式（如 "2004年7月1日"）而非 ISO
+      // 的 `YYYY-MM-DD`，需要单独解析。示例：https://music.douban.com/subject/2375247/
       const match = text.match(/(\d{4})年(\d{1,2})月(\d{2})日/);
       releaseDate = dayjs(`${match![1]}-${match![2]}-${match![3]}`).format(
         'YYYY-MM-DD',

@@ -1,6 +1,6 @@
-import { extractTmdbRating } from './const';
-import type { TmdbOperationPlan } from './tmdb-mapping';
-import type { RatingProfile, TmdbAccountStates } from './types';
+import { extractTmdbRating } from './platform-mappings';
+import type { TmdbOperationPlan } from './neodb-shelf-to-tmdb.mapping';
+import type { TmdbRatingPolicy, TmdbAccountStates } from '../types/platform-model';
 
 /**
  * Pure planning logic: given what TMDB currently says and what the mapping
@@ -32,7 +32,7 @@ export type TmdbPatch = {
 export function planTmdbWrites(
   current: TmdbAccountStates | null,
   plan: TmdbOperationPlan,
-  profile: RatingProfile,
+  profile: TmdbRatingPolicy,
 ): TmdbPatch {
   const reasons: string[] = [];
 

@@ -1,8 +1,8 @@
 import { consola } from 'consola';
-import handleBangumiToNeodb from './handle-bangumi-neodb';
-import { syncConfig } from './sync-config';
-import { printOverallSummary } from './sync-report';
-import { pathHasFailed } from './types';
+import handleBangumiToNeodb from '../paths/bangumi-to-neodb';
+import { syncConfig } from '../config/sync-switches';
+import { printOverallSummary } from '../report/console-summary';
+import { pathHasFailed } from '../report/path-report';
 
 /**
  * Full sync of all Bangumi collections to NeoDB.

@@ -11,10 +11,10 @@ import {
   extractTmdbTargetFromNeodb,
   neodbGradeToTmdbRating,
   toShelfType,
-} from '../src/const';
-import { resolveTmdbOperations } from '../src/tmdb-mapping';
-import { planTmdbWrites } from '../src/tmdb-merge';
-import type { NeodbItem, TmdbAccountStates } from '../src/types';
+} from '../src/domain/platform-mappings';
+import { resolveTmdbOperations } from '../src/domain/neodb-shelf-to-tmdb.mapping';
+import { planTmdbWrites } from '../src/domain/tmdb-write-plan';
+import type { NeodbItem, TmdbAccountStates } from '../src/types/platform-model';
 
 let passed = 0;
 let failed = 0;

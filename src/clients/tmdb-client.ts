@@ -1,13 +1,13 @@
 import got, { HTTPError } from 'got';
 import { consola } from 'consola';
-import { neodbTmdbConfig } from './sync-config';
-import { sleep } from './utils';
+import { neodbTmdbConfig } from '../config/neodb-tmdb-settings';
+import { sleep } from '../shared/http-client';
 import type {
   TmdbAccountStates,
   TmdbMediaType,
   TmdbSearchResult,
   TmdbTarget,
-} from './types';
+} from '../types/platform-model';
 
 /**
  * TMDB API client.

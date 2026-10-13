@@ -1,14 +1,17 @@
 import { consola } from 'consola';
-import runNeodbToTmdb from './handle-neodb-tmdb';
-import { describeNeodbTmdbConfig, neodbTmdbConfig } from './sync-config';
-import { printOverallSummary } from './sync-report';
-import { pathHasFailed } from './types';
+import runNeodbToTmdb from '../paths/neodb-to-tmdb';
+import {
+  describeNeodbTmdbConfig,
+  neodbTmdbConfig,
+} from '../config/neodb-tmdb-settings';
+import { printOverallSummary } from '../report/console-summary';
+import { pathHasFailed } from '../report/path-report';
 
 /**
  * Standalone entry for the NeoDB → TMDB path only.
  *
  * Use this when you want to sync just that path and leave the Douban/Bangumi
- * cron alone. The combined entry is `src/index.ts`.
+ * cron alone. The combined entry is `src/cli/sync-by-switches.ts`.
  *
  *   npm run sync:neodb-tmdb
  */

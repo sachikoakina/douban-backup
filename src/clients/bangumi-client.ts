@@ -1,8 +1,11 @@
 import dotenv from 'dotenv';
 import got, { HTTPError } from 'got';
 import { consola } from 'consola';
-import type { BangumiCollectionType, BangumiSubjectType } from './types';
-import { sleep } from './utils';
+import type {
+  BangumiCollectionType,
+  BangumiSubjectType,
+} from '../types/platform-model';
+import { sleep } from '../shared/http-client';
 
 dotenv.config();
 
@@ -12,9 +15,13 @@ export const bangumiCollectionLimit = Math.min(
   Math.max(Number(process.env.BANGUMI_COLLECTION_LIMIT ?? 50), 1),
   50,
 );
+/**
+ * UA 标识本客户端；BANGUMI_USER_AGENT 可覆盖。
+ * 上游曾误标成第三方仓库地址（bambooom/douban-backup），此处指向本仓库。
+ */
 export const bangumiUserAgent =
   process.env.BANGUMI_USER_AGENT ||
-  'douban-backup/1.0 (https://github.com/bambooom/douban-backup)';
+  'douban-shelf-archivist/1.0 (+https://github.com/sachikoakina/douban-backup)';
 
 const BGM_API = 'https://api.bgm.tv';
 

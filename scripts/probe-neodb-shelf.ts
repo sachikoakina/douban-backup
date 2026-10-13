@@ -15,9 +15,17 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { consola } from 'consola';
-import { neodbToken, fetchShelfPage, getNeodbMe, verifyNeodbToken } from '../src/neodb';
-import { neodbTmdbConfig, validateNeodbTmdbCredentials } from '../src/sync-config';
-import { SHELF_TYPES, type ShelfType } from '../src/types';
+import { neodbToken } from '../src/clients/neodb-mark-client';
+import {
+  fetchShelfPage,
+  getNeodbMe,
+  verifyNeodbToken,
+} from '../src/clients/neodb-shelf-client';
+import {
+  neodbTmdbConfig,
+  validateNeodbTmdbCredentials,
+} from '../src/config/neodb-tmdb-settings';
+import { SHELF_TYPES, type ShelfType } from '../src/types/platform-model';
 
 const OUT_DIR = '.cache';
 
