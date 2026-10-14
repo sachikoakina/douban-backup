@@ -1,36 +1,18 @@
-# ─── dependencies ───────────────────────────────────────────────────────
+.DS_Store
 node_modules
 /dist
 /bin
 
-# ─── credentials — NEVER commit these ───────────────────────────────────
-.env
+# local env files
 .env.local
 .env.*.local
-*.token
-credentials*.json
 
-# ─── sync state & cache (contains your收藏 history) ────────────────────
-.cache
-*.cache.json
-sync-state.json
-
-# ─── probe output (raw API dumps) ───────────────────────────────────────
-probe-output
-*.probe.json
-
-# ─── virtualenv / python tooling ────────────────────────────────────────
-.venv
-venv
-__pycache__
-*.pyc
-
-# ─── logs ───────────────────────────────────────────────────────────────
+# Log files
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 
-# ─── editors ────────────────────────────────────────────────────────────
+# Editor directories and files
 .idea
 .vscode
 *.suo
@@ -39,17 +21,21 @@ yarn-error.log*
 *.sln
 *.sw?
 
-# ─── os ─────────────────────────────────────────────────────────────────
-.DS_Store
-Thumbs.db
-
-# ─── legacy douban-backup artifacts ─────────────────────────────────────
 # chromium local user dir
 udata
-# exported csv / intermediate json
+
+# data files
 *.csv
 db-*.json
-# scratch files
-tmp*
+
+# test file
 test.*
+
+# dot config
+.env
+
+# tmp file
+tmp*
+
+# assets folder
 assets
