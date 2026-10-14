@@ -6,7 +6,7 @@ on:
   schedule:
     # https://docs.github.com/en/actions/reference/events-that-trigger-workflows#scheduled-events
     # Runs every 6 hours
-    - cron: '0 */6 * * *'
+    - cron: '0 8 * * 1'
 
 jobs:
   build:
@@ -27,6 +27,10 @@ jobs:
       DOUBAN_USER_ID: ${{ secrets.DOUBAN_USER_ID }}
       NEODB_API_TOKEN: ${{ secrets.NEODB_API_TOKEN }}
       NEODB_VISIBILITY: ${{ vars.NEODB_VISIBILITY || '2' }}
+      NEODB_BASE_URL: ${{ vars.NEODB_BASE_URL || 'https://neodb.social' }}
+      NEODB_REQUEST_DELAY_MS: ${{ vars.NEODB_REQUEST_DELAY_MS || '300' }}
+      NEODB_MAX_PAGES: ${{ vars.NEODB_MAX_PAGES || '10' }}
+      DOUBAN_RSS_USER_AGENT: ${{ vars.DOUBAN_RSS_USER_AGENT || '' }}
       BANGUMI_ACCESS_TOKEN: ${{ secrets.BANGUMI_ACCESS_TOKEN }}
       BANGUMI_PRIVATE: ${{ vars.BANGUMI_PRIVATE || 'false' }}
       BANGUMI_COLLECTION_LIMIT: ${{ vars.BANGUMI_COLLECTION_LIMIT || '50' }}
@@ -43,6 +47,34 @@ jobs:
       SYNC_DOUBAN_NEODB_MERGE: ${{ vars.SYNC_DOUBAN_NEODB_MERGE || 'neodb_prefer' }}
       SYNC_BANGUMI_NEODB_MERGE: ${{ vars.SYNC_BANGUMI_NEODB_MERGE || 'neodb_prefer' }}
       SYNC_BANGUMI_NEODB_PROGRESS: ${{ vars.SYNC_BANGUMI_NEODB_PROGRESS || '0' }}
+
+      # ── NeoDB → TMDB path ──────────────────────────────────────────────
+      # Without these the whole path is skipped: SYNC_NEODB_TMDB defaults to
+      # 0, so index.ts never enters the TMDB branch and exits 0 having done
+      # nothing — a green run that writes no data.
+      SYNC_NEODB_TMDB: ${{ vars.SYNC_NEODB_TMDB || '0' }}
+      TMDB_API_KEY: ${{ secrets.TMDB_API_KEY }}
+      # Writes need a v3 session id or a user-scoped v4 token. A v4 *read*
+      # token (scopes: api_read) authenticates reads but fails every write.
+      TMDB_SESSION_ID: ${{ secrets.TMDB_SESSION_ID }}
+      TMDB_ACCESS_TOKEN: ${{ secrets.TMDB_ACCESS_TOKEN }}
+      TMDB_ACCOUNT_ID: ${{ vars.TMDB_ACCOUNT_ID || '' }}
+      TMDB_LANGUAGE: ${{ vars.TMDB_LANGUAGE || 'zh-CN' }}
+      TMDB_REQUEST_DELAY_MS: ${{ vars.TMDB_REQUEST_DELAY_MS || '300' }}
+      TMDB_BASE_URL: ${{ vars.TMDB_BASE_URL || 'https://api.themoviedb.org/3' }}
+      TMDB_INCLUDE_ADULT: ${{ vars.TMDB_INCLUDE_ADULT || 'false' }}
+      SYNC_SHELF_TYPES: ${{ vars.SYNC_SHELF_TYPES || 'wishlist,progress,complete' }}
+      SYNC_CATEGORIES: ${{ vars.SYNC_CATEGORIES || 'movie,tv' }}
+      SYNC_RATING_PROFILE: ${{ vars.SYNC_RATING_PROFILE || 'tmdb_prefer' }}
+      SYNC_YEAR_TOLERANCE: ${{ vars.SYNC_YEAR_TOLERANCE || '1' }}
+      SYNC_MAX_ITEMS: ${{ vars.SYNC_MAX_ITEMS || '200' }}
+      SYNC_DRY_RUN: ${{ vars.SYNC_DRY_RUN || '0' }}
+      # Runners are ephemeral — no .cache/ survives between runs, so the
+      # incremental state file is useless here. Fall back to TMDB-side
+      # idempotency, which is safe and only costs extra read requests.
+      SYNC_INCREMENTAL: ${{ vars.SYNC_INCREMENTAL || '0' }}
+      SYNC_STATE_FILE: ${{ vars.SYNC_STATE_FILE || '.cache/sync-state.json' }}
+      SYNC_UNMATCHED_LOG: ${{ vars.SYNC_UNMATCHED_LOG || '.cache/unmatched.json' }}
 
     steps:
       - uses: actions/checkout@v6

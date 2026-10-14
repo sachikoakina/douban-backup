@@ -14,7 +14,7 @@ export const bangumiCollectionLimit = Math.min(
 );
 export const bangumiUserAgent =
   process.env.BANGUMI_USER_AGENT ||
-  'viazure/douban-backup/1.0 (https://github.com/viazure/douban-backup)';
+  'douban-backup/1.0 (https://github.com/bambooom/douban-backup)';
 
 const BGM_API = 'https://api.bgm.tv';
 
